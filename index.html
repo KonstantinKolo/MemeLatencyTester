@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Meme Latency Checker 🐸</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=JetBrains+Mono:wght@400;700&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0d0f1a;
+            --bg-card: #161829;
+            --bg-card-hover: #1c1f38;
+            --accent-green: #00ff88;
+            --accent-pink: #ff3cac;
+            --accent-cyan: #00d4ff;
+            --accent-yellow: #ffe44d;
+            --text-primary: #e8e8f0;
+            --text-muted: #8888a8;
+            --border: #2a2d4a;
+            --glow-green: 0 0 20px rgba(0,255,136,0.3);
+            --glow-pink: 0 0 20px rgba(255,60,172,0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-family: 'Bangers', cursive;
+            font-size: 3.5rem;
+            letter-spacing: 3px;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+            filter: drop-shadow(0 0 30px rgba(0,255,136,0.2));
+            animation: titlePulse 3s ease-in-out infinite;
+        }
+
+        @keyframes titlePulse {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(0,255,136,0.2)); }
+            50% { filter: drop-shadow(0 0 40px rgba(0,255,136,0.4)); }
+        }
+
+        .header .subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+
+        .header .protocols {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .protocol-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            color: var(--accent-cyan);
+            background: rgba(0,212,255,0.05);
+            letter-spacing: 1px;
+        }
+
+        /* Input area */
+        .input-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 32px;
+            transition: border-color 0.3s;
+        }
+
+        .input-section:focus-within {
+            border-color: var(--accent-green);
+            box-shadow: var(--glow-green);
+        }
+
+        .input-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .url-input {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .url-input::placeholder {
+            color: var(--text-muted);
+            opacity: 0.5;
+        }
+
+        .url-input:focus {
+            border-color: var(--accent-green);
+        }
+
+        .test-btn {
+            font-family: 'Bangers', cursive;
+            font-size: 1.15rem;
+            letter-spacing: 2px;
+            padding: 14px 32px;
+            background: linear-gradient(135deg, var(--accent-green), #00cc6a);
+            color: var(--bg-dark);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--glow-green);
+        }
+
+        .test-btn:active {
+            transform: translateY(0);
+        }
+
+        .test-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Quick test URLs */
+        .quick-urls {
+            margin-top: 16px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .quick-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .quick-btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            background: rgba(255,60,172,0.08);
+            border: 1px solid rgba(255,60,172,0.2);
+            border-radius: 6px;
+            color: var(--accent-pink);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(255,60,172,0.15);
+            border-color: var(--accent-pink);
+        }
+
+        /* Loading spinner */
+        .loader {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loader.active { display: block; }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loader-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-green);
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.4; }
+        }
+
+        /* Results */
+        .results-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .result-number {
+            font-family: 'Bangers', cursive;
+            font-size: 1.4rem;
+            color: var(--accent-pink);
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--accent-pink);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .result-url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+
+        .result-body {
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 600px) {
+            .result-body { grid-template-columns: 1fr; }
+        }
+
+        /* Meme image area */
+        .meme-preview {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-dark);
+            border-radius: 12px;
+            overflow: hidden;
+            min-height: 200px;
+            border: 1px solid var(--border);
+        }
+
+        .meme-preview img {
+            max-width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* Stats area */
+        .stats-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--bg-dark);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .stat-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        .stat-value.latency { color: var(--accent-green); }
+        .stat-value.size { color: var(--accent-cyan); }
+        .stat-value.speed { color: var(--accent-yellow); }
+
+        /* Latency bar */
+        .latency-bar-wrap {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .latency-bar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.6s ease-out;
+            background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--accent-pink));
+        }
+
+        /* Headers table */
+        .headers-section {
+            grid-column: 1 / -1;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .headers-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .headers-grid {
+            display: grid;
+            gap: 6px;
+        }
+
+        .header-row {
+            display: flex;
+            gap: 12px;
+            padding: 8px 12px;
+            background: var(--bg-dark);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+        }
+
+        .header-key {
+            color: var(--accent-pink);
+            white-space: nowrap;
+            min-width: 140px;
+        }
+
+        .header-val {
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        /* Compare section */
+        .compare-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 12px;
+        }
+
+        .compare-title {
+            font-family: 'Bangers', cursive;
+            font-size: 1.5rem;
+            color: var(--accent-yellow);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .compare-bar-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .compare-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .compare-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            width: 30px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .compare-bar-bg {
+            flex: 1;
+            height: 28px;
+            background: var(--bg-dark);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .compare-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--bg-dark);
+            font-weight: 700;
+            transition: width 0.8s ease-out;
+            min-width: 60px;
+        }
+
+        .compare-bar-fill.fast { background: var(--accent-green); }
+        .compare-bar-fill.medium { background: var(--accent-yellow); }
+        .compare-bar-fill.slow { background: var(--accent-pink); }
+
+        /* Error state */
+        .error-msg {
+            background: rgba(255,60,60,0.08);
+            border: 1px solid rgba(255,60,60,0.2);
+            border-radius: 10px;
+            padding: 16px 20px;
+            color: #ff6060;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            margin-bottom: 16px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer p {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🐸 MEME LATENCY CHECKER</h1>
+            <p class="subtitle">Колко бързо зарежда мемето ти?</p>
+            <div class="protocols">
+                <span class="protocol-badge">TCP</span>
+                <span class="protocol-badge">DNS</span>
+                <span class="protocol-badge">HTTP/2</span>
+                <span class="protocol-badge">TLS</span>
+            </div>
+        </div>
+
+        <!-- Input -->
+        <div class="input-section">
+            <label class="input-label">// URL на меме изображение</label>
+            <div class="input-row">
+                <input type="url" class="url-input" id="urlInput"
+                       placeholder="https://i.imgur.com/abc.jpg"
+                       autocomplete="off">
+                <button class="test-btn" id="testBtn">ТЕСТ МЕМЕ!</button>
+            </div>
+            <div class="quick-urls">
+                <span class="quick-label">Бърз тест →</span>
+                <button class="quick-btn" data-url="https://api.memegen.link/images/doge/such_speed/very_latency.jpg">Doge</button>
+                <button class="quick-btn" data-url="https://api.memegen.link/images/buzz/memes/memes_everywhere.jpg">Buzz</button>
+                <button class="quick-btn" data-url="https://api.memegen.link/images/rollsafe/can't_have_latency/if_you_don't_test.jpg">Rollsafe</button>
+                <button class="quick-btn" data-url="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/1200px-Cat_November_2010-1a.jpg">Cat</button>
+                <button class="quick-btn" data-url="https://picsum.photos/600/400">Random</button>
+            </div>
+        </div>
+
+        <!-- Loader -->
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            <p class="loader-text">Зареждам мемето...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="errorContainer"></div>
+
+        <!-- Results -->
+        <div class="results-container" id="results"></div>
+
+        <!-- Compare chart (appears after 2+ tests) -->
+        <div class="compare-section" id="compareSection" style="display:none;">
+            <h2 class="compare-title">⚡ Сравнение на мемета</h2>
+            <div class="compare-bar-container" id="compareBars"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Meme Latency Checker &bull; TCP &bull; HTTP/2 &bull; DNS &bull; 2025</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
