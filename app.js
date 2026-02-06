@@ -75,33 +75,74 @@ async function measureMeme(url) {
     // Изчистваме performance entries
     performance.clearResourceTimings();
 
+    // За picsum/random URL-и, добавяме уникален параметър за всяко натискане
+    let loadUrl = url;
+    if (url.includes('picsum.photos') || url.includes('random')) {
+        loadUrl = url + (url.includes('?') ? '&' : '?') + '_r=' + Date.now();
+    }
+
     // --- Зареждаме картинката чрез <img> (заобикаля CORS!) ---
     const startTime = performance.now();
 
-    await new Promise((resolve, reject) => {
+    const loadedImg = await new Promise((resolve, reject) => {
         const img = new Image();
         img.referrerPolicy = 'no-referrer';
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('Неуспешно зареждане. Провери дали URL-ът е директен линк към картинка (.jpg, .png, .gif).'));
-        img.src = url;
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => {
+            const img2 = new Image();
+            img2.referrerPolicy = 'no-referrer';
+            img2.onload = () => resolve(img2);
+            img2.onerror = () => reject(new Error('Неуспешно зареждане. Провери дали URL-ът е директен линк към картинка.'));
+            img2.src = loadUrl;
+        };
+        img.src = loadUrl;
     });
 
     const endTime = performance.now();
     const totalTime = endTime - startTime;
 
-    // --- Performance Resource Timing (TCP, DNS и др.) ---
+    // --- Performance Resource Timing ---
     await new Promise(r => setTimeout(r, 100));
+    const perfEntry = getPerformanceEntry(loadUrl) || getPerformanceEntry(url);
 
-    const perfEntry = getPerformanceEntry(url);
-
-    // Размер от Performance API
+    // --- Размер: опитваме Performance API, после canvas estimate ---
     let sizeBytes = 0;
+    let sizeEstimated = false;
+
     if (perfEntry) {
-        sizeBytes = perfEntry.decodedBodySize || perfEntry.transferSize || perfEntry.encodedBodySize || 0;
+        sizeBytes = perfEntry.transferSize || perfEntry.encodedBodySize || perfEntry.decodedBodySize || 0;
+    }
+
+    // Ако Performance API не даде размер, оценяваме чрез canvas
+    if (sizeBytes === 0) {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = loadedImg.naturalWidth;
+            canvas.height = loadedImg.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(loadedImg, 0, 0);
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+            if (blob) {
+                sizeBytes = blob.size;
+                sizeEstimated = true;
+            }
+        } catch (e) {
+            // Canvas tainted by CORS – използваме приблизителна оценка от пиксели
+            const pixels = loadedImg.naturalWidth * loadedImg.naturalHeight;
+            sizeBytes = Math.round(pixels * 0.5); // ~0.5 bytes/pixel за компресирано изображение
+            sizeEstimated = true;
+        }
     }
 
     const sizeKB = sizeBytes / 1024;
     const speedKBs = sizeKB > 0 ? sizeKB / (totalTime / 1000) : 0;
+
+    // --- Проверяваме дали timing данните са CORS-ограничени ---
+    let corsRestricted = true;
+    if (perfEntry) {
+        corsRestricted = perfEntry.corsRestricted;
+    }
 
     // --- HTTP Headers чрез fetch (опционално) ---
     let headers = [];
@@ -111,31 +152,41 @@ async function measureMeme(url) {
             headers.push({ key, value });
         });
     } catch (e) {
-        // CORS блокира fetch – нормално за imgur и други
         headers.push({ key: 'info', value: 'Headers недостъпни – CORS ограничение на сървъра' });
     }
 
-    // Добавяме протокол от Performance API
+    // Добавяме протокол
     if (perfEntry && perfEntry.protocol) {
         headers.push({ key: 'protocol (detected)', value: perfEntry.protocol });
     }
+    // Добавяме размер
     if (sizeBytes > 0) {
         const hasContentLength = headers.some(h => h.key.toLowerCase() === 'content-length');
         if (!hasContentLength) {
-            headers.push({ key: 'content-length (detected)', value: sizeBytes + ' bytes' });
+            headers.push({
+                key: 'content-length (detected)',
+                value: sizeBytes + ' bytes' + (sizeEstimated ? ' (приблизително)' : '')
+            });
         }
     }
+    // Резолюция на изображението
+    headers.push({
+        key: 'resolution',
+        value: loadedImg.naturalWidth + ' × ' + loadedImg.naturalHeight + ' px'
+    });
 
     return {
         url: url,
-        imageUrl: url,
+        imageUrl: loadedImg.src,
         latencyMs: Math.round(totalTime),
         sizeBytes: sizeBytes,
         sizeKB: sizeKB > 0 ? sizeKB.toFixed(1) : 'N/A',
+        sizeEstimated: sizeEstimated,
         speedKBs: speedKBs > 0 ? speedKBs.toFixed(1) : 'N/A',
         speedMBs: speedKBs > 0 ? (speedKBs / 1024).toFixed(2) : 'N/A',
         headers: headers,
-        timing: perfEntry
+        timing: perfEntry,
+        corsRestricted: corsRestricted
     };
 }
 
@@ -145,20 +196,22 @@ function getPerformanceEntry(url) {
     const entries = performance.getEntriesByType('resource');
     for (let i = entries.length - 1; i >= 0; i--) {
         const name = entries[i].name;
-        // Сравняваме без query параметри или точно съвпадение
         if (name === url || name.split('?')[0] === url.split('?')[0]) {
             const e = entries[i];
+            // Ако requestStart е 0, браузърът скрива timing (CORS без Timing-Allow-Origin)
+            const corsRestricted = e.requestStart === 0;
             return {
                 dns: Math.round(e.domainLookupEnd - e.domainLookupStart),
                 tcp: Math.round(e.connectEnd - e.connectStart),
                 tls: Math.round(e.secureConnectionStart > 0 ? e.connectEnd - e.secureConnectionStart : 0),
-                ttfb: Math.round(e.responseStart - e.requestStart),
-                download: Math.round(e.responseEnd - e.responseStart),
+                ttfb: corsRestricted ? 0 : Math.round(e.responseStart - e.requestStart),
+                download: corsRestricted ? 0 : Math.round(e.responseEnd - e.responseStart),
                 total: Math.round(e.responseEnd - e.startTime),
-                protocol: e.nextHopProtocol || 'неизвестен',
+                protocol: e.nextHopProtocol || (url.startsWith('https') ? 'h2 (предполагаем)' : 'http/1.1 (предполагаем)'),
                 transferSize: e.transferSize || 0,
                 encodedBodySize: e.encodedBodySize || 0,
-                decodedBodySize: e.decodedBodySize || 0
+                decodedBodySize: e.decodedBodySize || 0,
+                corsRestricted: corsRestricted
             };
         }
     }
@@ -173,9 +226,9 @@ function renderResult(result) {
 
     const latencyPercent = Math.min((result.latencyMs / 2000) * 100, 100);
 
-    // Timing breakdown
+    // Timing breakdown – показваме само ако НЕ са CORS-ограничени
     let timingHTML = '';
-    if (result.timing) {
+    if (result.timing && !result.corsRestricted) {
         timingHTML = `
             <div class="stat-item">
                 <span class="stat-label">DNS Lookup</span>
@@ -198,12 +251,33 @@ function renderResult(result) {
                 <span class="stat-label">Download</span>
                 <span class="stat-value latency">${result.timing.download}ms</span>
             </div>
+        `;
+    } else if (result.timing) {
+        timingHTML = `
+            <div class="stat-item">
+                <span class="stat-label">DNS / TCP / TTFB</span>
+                <span class="stat-value" style="color:var(--text-muted);font-size:0.75rem">скрити (CORS)</span>
+            </div>
+        `;
+    }
+
+    // Протокол винаги показваме
+    if (result.timing) {
+        timingHTML += `
             <div class="stat-item">
                 <span class="stat-label">Протокол</span>
                 <span class="stat-value size">${result.timing.protocol}</span>
             </div>
         `;
     }
+
+    // Размер с маркер за приблизителен
+    const sizeDisplay = result.sizeKB !== 'N/A'
+        ? result.sizeKB + ' KB' + (result.sizeEstimated ? ' ≈' : '')
+        : 'N/A';
+    const speedDisplay = result.speedMBs !== 'N/A'
+        ? result.speedMBs + ' MB/s' + (result.sizeEstimated ? ' ≈' : '')
+        : 'N/A';
 
     // Headers
     let headersHTML = result.headers.map(h =>
@@ -216,7 +290,7 @@ function renderResult(result) {
     card.innerHTML = `
         <div class="result-header">
             <div class="result-number">${result.number}</div>
-            <span class="result-url">${escapeHtml(result.url)}</span>
+            <span class="result-url"><a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(result.url)}</a></span>
         </div>
         <div class="result-body">
             <div class="meme-preview">
@@ -234,11 +308,11 @@ function renderResult(result) {
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Размер</span>
-                    <span class="stat-value size">${result.sizeKB} KB</span>
+                    <span class="stat-value size">${sizeDisplay}</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Скорост</span>
-                    <span class="stat-value speed">${result.speedMBs} MB/s</span>
+                    <span class="stat-value speed">${speedDisplay}</span>
                 </div>
                 ${timingHTML}
             </div>
@@ -265,18 +339,23 @@ function updateCompareChart() {
     const maxLatency = Math.max(...testResults.map(r => r.latencyMs));
 
     compareBars.innerHTML = testResults.map((r) => {
-        const pct = Math.max((r.latencyMs / maxLatency) * 100, 8);
+        const pct = Math.max((r.latencyMs / maxLatency) * 100, 3);
         let cls = 'fast';
         if (r.latencyMs > 500) cls = 'slow';
         else if (r.latencyMs > 200) cls = 'medium';
+
+        // Ако барът е твърде тесен, показваме текста отвън
+        const textInside = pct > 25;
+        const barText = `${r.latencyMs}ms | ${r.sizeKB}KB`;
 
         return `
             <div class="compare-row">
                 <span class="compare-label">#${r.number}</span>
                 <div class="compare-bar-bg" title="${escapeHtml(r.url)}">
                     <div class="compare-bar-fill ${cls}" style="width: ${pct}%">
-                        ${r.latencyMs}ms &nbsp;|&nbsp; ${r.sizeKB}KB
+                        ${textInside ? barText : ''}
                     </div>
+                    ${!textInside ? `<span class="compare-bar-text-outside">${barText}</span>` : ''}
                 </div>
             </div>
         `;
